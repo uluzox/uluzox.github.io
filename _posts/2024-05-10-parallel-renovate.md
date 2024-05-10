@@ -121,3 +121,7 @@ in 8 Minutes.
         {% include figure.liquid loading="eager" path="assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-2.png" class="img-fluid rounded z-depth-1" zoomable=true %}
     </div>
 </div>
+
+# Sources
+
+- [Medium: Optimizing Renovate for GitLab with 500+ Repositories](https://medium.com/notive/optimizing-renovate-for-gitlab-with-500-repositories-6d225f24ff79)
