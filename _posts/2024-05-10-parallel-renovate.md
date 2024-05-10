@@ -63,45 +63,10 @@ Job. Second, we can add extra tools to the image to run renovate
 [`postUpgradeTasks`](https://docs.renovatebot.com/configuration-options/#postupgradetasks).
 
 `/Dockerfile`
-```Dockerfile
-FROM ghcr.io/renovatebot/renovate:37.351.0@sha256:3286096674fc3e5d5d3e74698c144113930ffbc4f900ddc9f99d6c81c682f448
-USER 0
-
-# install tools here
-
-WORKDIR /usr/src/app
-COPY template/.gitlab-ci.yaml ./template/.gitlab-ci.yml
-USER ubuntu
-```
+<script src="https://gist.github.com/uluzox/aa26e82b11b6e5093ae59d9e09e9e0c1.js"></script>
 
 `/template/.gitlab-ci.yml`
-```yaml
----
-include:
-  - project: 'renovate-bot'
-    ref: main
-    file: '.template.gitlab-ci.yml'
-
-renovate:
-  extends: .template
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
-  script:
-    - renovate $RENOVATE_EXTRA_FLAGS
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}-renovate
-    paths:
-      - renovate/cache/renovate/repository/
-  resource_group: $RENOVATE_EXTRA_FLAGS
-  artifacts:
-    when: always
-    expire_in: 1d
-    paths:
-      - '$RENOVATE_LOG_FILE'
-  parallel:
-    matrix:
-      - RENOVATE_EXTRA_FLAGS: ###RENOVATE_REPOS###
-```
+<script src="https://gist.github.com/uluzox/bf1a1c574369e411b89aa46adf8486fc.js"></script>
 
 ## renovate-bot
 
@@ -111,14 +76,7 @@ This way we can, `extend` from the `.template` job by `include`ing the
 from `project` (see `/template/.gitlab-ci.yml` in [renovate-image](#renovate-image).
 
 `.template.gitlab-ci.yml`
-```yaml
----
-.template:
-  variables:
-    RENOVATE_ENDPOINT: $CI_API_V4_URL
-    RENOVATE_PLATFORM: gitlab
-  image: registry.my-domain.de/renovate-image:v1.1.5@sha256:4a0cfbdd03f691d96955fe41fc8bec49b011afc06519d3122261ead2f69beb6f
-```
+<script src="https://gist.github.com/uluzox/5424aeabf41ebb3cdf61f07450214ba6.js"></script>
 
 Moreover, by adapting renovate `gitlab-ci` manager configuration in the `renovate.json`
 we can ensure updates to the `image`. The below regex matches both `.gitlab-ci.yml`
@@ -146,86 +104,7 @@ with the discovered repositories.
 job to trigger the jobs defined in the pipeline configuration.
 
 `.gitlab-ci.yml`
-```yaml
----
-stages:
-  - test
-  - build
-  - deploy
-
-include:
-  - local: "/.template.gitlab-ci.yml"
-
-renovate-config-validator:
-  extends: .template
-  stage: test
-  script:
-    - renovate-config-validator $RENOVATE_CONFIG_VALIDATOR_EXTRA_FLAGS
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_COMMIT_TAG != null
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"
-
-renovate:discover:
-  extends: .template
-  stage: build
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  variables:
-    # A Personal Access Token with authorization as described https://docs.renovatebot.com/modules/platform/gitlab/#authentication
-    # Add the token as a CI/CD variable with name PAT_RENOVATE
-    RENOVATE_TOKEN: $PAT_RENOVATE
-    RENOVATE_AUTODISCOVER: 'true'
-    RENOVATE_AUTODISCOVER_FILTER: '["group1/subgroup1/**", "group2/**"]' # define your repos here
-  script:
-    - renovate --write-discovered-repos=renovate-repos.json
-    - sed "s~###RENOVATE_REPOS###~$(cat renovate-repos.json)~" /usr/src/app/template/.gitlab-ci.yml > .gitlab-renovate-repos.yml
-  artifacts:
-    paths:
-      - renovate-repos.json
-      - .gitlab-renovate-repos.yml
-
-renovate:repos:
-  stage: deploy
-  needs:
-    - renovate:discover
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_PIPELINE_SOURCE == "pipeline"
-  inherit:
-    variables: true
-  variables:
-    # base config from https://gitlab.com/renovate-bot/renovate-runner/-/blob/main/templates/renovate.gitlab-ci.yml?ref_type=heads
-    # must be a writable container path as no project is cloned in child pipeline
-    RENOVATE_BASE_DIR: /tmp/renovate
-    RENOVATE_OPTIMIZE_FOR_DISABLED: 'true'
-    RENOVATE_REPOSITORY_CACHE: 'enabled'
-    RENOVATE_LOG_FILE: renovate-log.ndjson
-    RENOVATE_LOG_FILE_LEVEL: debug
-
-    # custom config
-    RENOVATE_TOKEN: $PAT_RENOVATE
-    RENOVATE_GIT_AUTHOR: 'Renovate Bot <no-reply@mydomain.de>'
-    RENOVATE_OSV_VULNERABILITY_ALERTS: 'true'
-    RENOVATE_FORK_PROCESSING: 'enabled'
-    RENOVATE_ONBOARDING: 'false'
-    RENOVATE_ONBOARDING_CONFIG: '{"$$schema": "https://docs.renovatebot.com/renovate-schema.json", "extends": ["local>renovate-bot:renovate.json"] }'
-    RENOVATE_GITHUB_TOKEN_WARN: 'false'
-    RENOVATE_REQUIRE_CONFIG: 'ignored'
-    RENOVATE_CONFIG_FILE: 'renovate.json'
-    LOG_LEVEL: debug
-  trigger:
-    forward:
-      yaml_variables: true
-      pipeline_variables: true
-    include:
-      - job: renovate:discover
-        artifact: .gitlab-renovate-repos.yml
-```
+<script src="https://gist.github.com/uluzox/0f62f7a318e391b3265dcf148f75ca61.js"></script>
 
 # Results
 
