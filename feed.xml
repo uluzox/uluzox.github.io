@@ -1,1 +1,125 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://jekyllrb.com/" version="4.3.3">Jekyll</generator><link href="https://uluzox.github.io/feed.xml" rel="self" type="application/atom+xml"/><link href="https://uluzox.github.io/" rel="alternate" type="text/html" hreflang="en"/><updated>2024-05-10T06:56:35+00:00</updated><id>https://uluzox.github.io/feed.xml</id><title type="html">blank</title><subtitle>A simple, whitespace theme for academics. Based on [*folio](https://github.com/bogoli/-folio) design. </subtitle></feed>
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://jekyllrb.com/" version="4.3.3">Jekyll</generator><link href="https://uluzox.github.io/feed.xml" rel="self" type="application/atom+xml"/><link href="https://uluzox.github.io/" rel="alternate" type="text/html" hreflang="en"/><updated>2024-05-10T08:42:34+00:00</updated><id>https://uluzox.github.io/feed.xml</id><title type="html">blank</title><subtitle>A simple, whitespace theme for academics. Based on [*folio](https://github.com/bogoli/-folio) design. </subtitle><entry><title type="html">Running renovate in parallel</title><link href="https://uluzox.github.io/blog/2024/parallel-renovate/" rel="alternate" type="text/html" title="Running renovate in parallel"/><published>2024-05-10T06:00:00+00:00</published><updated>2024-05-10T06:00:00+00:00</updated><id>https://uluzox.github.io/blog/2024/parallel-renovate</id><content type="html" xml:base="https://uluzox.github.io/blog/2024/parallel-renovate/"><![CDATA[<h1 id="setting">Setting</h1> <p><a href="https://docs.renovatebot.com/">Renovate Bot</a> is an automated tool that manages software dependencies. It simplifies project maintenance by automatically updating dependencies to their latest versions through pull requests. This automation not only saves time but also enhances security by minimizing vulnerabilities associated with outdated software. Users can customize how and when updates are applied, ensuring minimal disruption to the development workflow. By maintaining dependency versions consistently and allowing configurable update rules, Renovate Bot supports stable development environments and efficient project lifecycles.</p> <p>When running Renovate on GitLab CI with the <a href="https://gitlab.com/renovate-bot/renovate-runner/-/tree/8c3e51c90522cdfdf0d504695fd63f3474e2af5a/templates">official GitLab CI templates</a>, the Renovate Job can easily take multiple tens of minutes to go through a project’s repositories. In the example Pipeline below, renovate scanned 52 GitLab repositories for dependencies from the below managers:</p> <ul> <li>npm</li> <li>kustomize</li> <li>dockerfile</li> <li>composer</li> <li>gitlabci</li> <li>gitlabci-include</li> <li>terraform</li> <li>terraform-version</li> </ul> <div class="row mt-3"> <div class="col-sm mt-3 mt-md-0"> <figure> <picture> <source class="responsive-img-srcset" srcset="/assets/blog/2024-05-10-parallel-renovate/renovate-single-process-length-480.webp 480w,/assets/blog/2024-05-10-parallel-renovate/renovate-single-process-length-800.webp 800w,/assets/blog/2024-05-10-parallel-renovate/renovate-single-process-length-1400.webp 1400w," sizes="95vw" type="image/webp"/> <img src="/assets/blog/2024-05-10-parallel-renovate/renovate-single-process-length.png" class="img-fluid rounded z-depth-1" width="100%" height="auto" data-zoomable="" loading="eager" onerror="this.onerror=null; $('.responsive-img-srcset').remove();"/> </picture> </figure> </div> </div> <p>With roughly 30 minutes of execution time, we can schedule this pipeline only about once an hour. In the project, renovate is not only used to update dependencies from external projects but also from our own project’s application components. Therefore, once an hour is the maximum acceptable schedule. At this stage of the project we knew that there were many more repositories to be created. Thus there was an urge for optimisation of the renovate pipeline.</p> <h1 id="setup">Setup</h1> <p>We will have two repositories:</p> <ul> <li><code class="language-plaintext highlighter-rouge">renovate-image</code>, for building a custom renovate container image</li> <li><code class="language-plaintext highlighter-rouge">renovate-bot</code>, for holding renovate default configuration and this is were the pipeline runs</li> </ul> <h2 id="renovate-image">renovate-image</h2> <p>A custom renovate container image is needed for two reasons. First, we need to add a <code class="language-plaintext highlighter-rouge">.gitlab-ci.yaml</code> template to the image to construct a dynamic GitLab CI Job. Second, we can add extra tools to the image to run renovate <a href="https://docs.renovatebot.com/configuration-options/#postupgradetasks"><code class="language-plaintext highlighter-rouge">postUpgradeTasks</code></a>.</p> <p><code class="language-plaintext highlighter-rouge">/Dockerfile</code></p> <div class="language-Dockerfile highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">FROM</span><span class="s"> ghcr.io/renovatebot/renovate:37.351.0@sha256:3286096674fc3e5d5d3e74698c144113930ffbc4f900ddc9f99d6c81c682f448</span>
+<span class="k">USER</span><span class="s"> 0</span>
+
+<span class="c"># install tools here</span>
+
+<span class="k">WORKDIR</span><span class="s"> /usr/src/app</span>
+<span class="k">COPY</span><span class="s"> template/.gitlab-ci.yaml ./template/.gitlab-ci.yml</span>
+<span class="k">USER</span><span class="s"> ubuntu</span>
+</code></pre></div></div> <p><code class="language-plaintext highlighter-rouge">/template/.gitlab-ci.yml</code></p> <div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nn">---</span>
+<span class="na">include</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">project</span><span class="pi">:</span> <span class="s1">'</span><span class="s">renovate-bot'</span>
+    <span class="na">ref</span><span class="pi">:</span> <span class="s">main</span>
+    <span class="na">file</span><span class="pi">:</span> <span class="s1">'</span><span class="s">.template.gitlab-ci.yml'</span>
+
+<span class="na">renovate</span><span class="pi">:</span>
+  <span class="na">extends</span><span class="pi">:</span> <span class="s">.template</span>
+  <span class="na">rules</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_PIPELINE_SOURCE == "parent_pipeline"</span>
+  <span class="na">script</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">renovate $RENOVATE_EXTRA_FLAGS</span>
+  <span class="na">cache</span><span class="pi">:</span>
+    <span class="na">key</span><span class="pi">:</span> <span class="s">${CI_COMMIT_REF_SLUG}-renovate</span>
+    <span class="na">paths</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">renovate/cache/renovate/repository/</span>
+  <span class="na">resource_group</span><span class="pi">:</span> <span class="s">$RENOVATE_EXTRA_FLAGS</span>
+  <span class="na">artifacts</span><span class="pi">:</span>
+    <span class="na">when</span><span class="pi">:</span> <span class="s">always</span>
+    <span class="na">expire_in</span><span class="pi">:</span> <span class="s">1d</span>
+    <span class="na">paths</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s1">'</span><span class="s">$RENOVATE_LOG_FILE'</span>
+  <span class="na">parallel</span><span class="pi">:</span>
+    <span class="na">matrix</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="na">RENOVATE_EXTRA_FLAGS</span><span class="pi">:</span> <span class="c1">###RENOVATE_REPOS###</span>
+</code></pre></div></div> <h2 id="renovate-bot">renovate-bot</h2> <p>The definition of the <code class="language-plaintext highlighter-rouge">image</code> is placed into an extra file called <code class="language-plaintext highlighter-rouge">.template.gitlab-ci.yml</code>. This way we can, <code class="language-plaintext highlighter-rouge">extend</code> from the <code class="language-plaintext highlighter-rouge">.template</code> job by <code class="language-plaintext highlighter-rouge">include</code>ing the <code class="language-plaintext highlighter-rouge">.template.gitlab-ci.yml</code> file into a pipeline configuration from <code class="language-plaintext highlighter-rouge">local</code> and from <code class="language-plaintext highlighter-rouge">project</code> (see <code class="language-plaintext highlighter-rouge">/template/.gitlab-ci.yml</code> in <a href="#renovate-image">renovate-image</a>.</p> <p><code class="language-plaintext highlighter-rouge">.template.gitlab-ci.yml</code></p> <div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nn">---</span>
+<span class="na">.template</span><span class="pi">:</span>
+  <span class="na">variables</span><span class="pi">:</span>
+    <span class="na">RENOVATE_ENDPOINT</span><span class="pi">:</span> <span class="s">$CI_API_V4_URL</span>
+    <span class="na">RENOVATE_PLATFORM</span><span class="pi">:</span> <span class="s">gitlab</span>
+  <span class="na">image</span><span class="pi">:</span> <span class="s">registry.my-domain.de/renovate-image:v1.1.5@sha256:4a0cfbdd03f691d96955fe41fc8bec49b011afc06519d3122261ead2f69beb6f</span>
+</code></pre></div></div> <p>Moreover, by adapting renovate <code class="language-plaintext highlighter-rouge">gitlab-ci</code> manager configuration in the <code class="language-plaintext highlighter-rouge">renovate.json</code> we can ensure updates to the <code class="language-plaintext highlighter-rouge">image</code>. The below regex matches both <code class="language-plaintext highlighter-rouge">.gitlab-ci.yml</code> and <code class="language-plaintext highlighter-rouge">.template.gitlab-ci.yml</code> files.</p> <p><code class="language-plaintext highlighter-rouge">renovate.json</code></p> <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"gitlabci"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"fileMatch"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+      </span><span class="s2">"(</span><span class="se">\\</span><span class="s2">..+)?</span><span class="se">\\</span><span class="s2">.gitlab-ci</span><span class="se">\\</span><span class="s2">.ya?ml$"</span><span class="w">
+    </span><span class="p">]</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div> <p>Now, the actual renovate pipeline, includes the above template and defines three jobs.</p> <ul> <li><code class="language-plaintext highlighter-rouge">renovate-config-validator</code> is for validating the renovate configuration.</li> <li><code class="language-plaintext highlighter-rouge">renovate:discover</code> finds all repositories which dependencies shall be scanned by renovate. Furthermore, it creates a GitLab CI pipeline file named <code class="language-plaintext highlighter-rouge">.gitlab-renovate-repos.yml</code> from the <code class="language-plaintext highlighter-rouge">template/.gitlab-ci.yml</code> and replaces the placeholder <code class="language-plaintext highlighter-rouge">###RENOVATE_REPOS###</code> with the discovered repositories.</li> <li><code class="language-plaintext highlighter-rouge">renovate:repos</code> uses the <code class="language-plaintext highlighter-rouge">.gitlab-renovate-repos.yml</code> from the <code class="language-plaintext highlighter-rouge">renovate:discover</code> job to trigger the jobs defined in the pipeline configuration.</li> </ul> <p><code class="language-plaintext highlighter-rouge">.gitlab-ci.yml</code></p> <div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nn">---</span>
+<span class="na">stages</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="s">test</span>
+  <span class="pi">-</span> <span class="s">build</span>
+  <span class="pi">-</span> <span class="s">deploy</span>
+
+<span class="na">include</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">local</span><span class="pi">:</span> <span class="s2">"</span><span class="s">/.template.gitlab-ci.yml"</span>
+
+<span class="na">renovate-config-validator</span><span class="pi">:</span>
+  <span class="na">extends</span><span class="pi">:</span> <span class="s">.template</span>
+  <span class="na">stage</span><span class="pi">:</span> <span class="s">test</span>
+  <span class="na">script</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">renovate-config-validator $RENOVATE_CONFIG_VALIDATOR_EXTRA_FLAGS</span>
+  <span class="na">rules</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_PIPELINE_SOURCE == "merge_request_event"</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_COMMIT_BRANCH &amp;&amp; $CI_OPEN_MERGE_REQUESTS</span>
+      <span class="na">when</span><span class="pi">:</span> <span class="s">never</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_COMMIT_BRANCH</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_COMMIT_TAG != </span><span class="kc">null</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"</span>
+
+<span class="na">renovate:discover</span><span class="pi">:</span>
+  <span class="na">extends</span><span class="pi">:</span> <span class="s">.template</span>
+  <span class="na">stage</span><span class="pi">:</span> <span class="s">build</span>
+  <span class="na">rules</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_PIPELINE_SOURCE == "merge_request_event"</span>
+  <span class="na">variables</span><span class="pi">:</span>
+    <span class="c1"># A Personal Access Token with authorization as described https://docs.renovatebot.com/modules/platform/gitlab/#authentication</span>
+    <span class="c1"># Add the token as a CI/CD variable with name PAT_RENOVATE</span>
+    <span class="na">RENOVATE_TOKEN</span><span class="pi">:</span> <span class="s">$PAT_RENOVATE</span>
+    <span class="na">RENOVATE_AUTODISCOVER</span><span class="pi">:</span> <span class="s1">'</span><span class="s">true'</span>
+    <span class="na">RENOVATE_AUTODISCOVER_FILTER</span><span class="pi">:</span> <span class="s1">'</span><span class="s">["group1/subgroup1/**",</span><span class="nv"> </span><span class="s">"group2/**"]'</span> <span class="c1"># define your repos here</span>
+  <span class="na">script</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">renovate --write-discovered-repos=renovate-repos.json</span>
+    <span class="pi">-</span> <span class="s">sed "s~###RENOVATE_REPOS###~$(cat renovate-repos.json)~" /usr/src/app/template/.gitlab-ci.yml &gt; .gitlab-renovate-repos.yml</span>
+  <span class="na">artifacts</span><span class="pi">:</span>
+    <span class="na">paths</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">renovate-repos.json</span>
+      <span class="pi">-</span> <span class="s">.gitlab-renovate-repos.yml</span>
+
+<span class="na">renovate:repos</span><span class="pi">:</span>
+  <span class="na">stage</span><span class="pi">:</span> <span class="s">deploy</span>
+  <span class="na">needs</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">renovate:discover</span>
+  <span class="na">rules</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"</span>
+    <span class="pi">-</span> <span class="na">if</span><span class="pi">:</span> <span class="s">$CI_PIPELINE_SOURCE == "pipeline"</span>
+  <span class="na">inherit</span><span class="pi">:</span>
+    <span class="na">variables</span><span class="pi">:</span> <span class="kc">true</span>
+  <span class="na">variables</span><span class="pi">:</span>
+    <span class="c1"># base config from https://gitlab.com/renovate-bot/renovate-runner/-/blob/main/templates/renovate.gitlab-ci.yml?ref_type=heads</span>
+    <span class="c1"># must be a writable container path as no project is cloned in child pipeline</span>
+    <span class="na">RENOVATE_BASE_DIR</span><span class="pi">:</span> <span class="s">/tmp/renovate</span>
+    <span class="na">RENOVATE_OPTIMIZE_FOR_DISABLED</span><span class="pi">:</span> <span class="s1">'</span><span class="s">true'</span>
+    <span class="na">RENOVATE_REPOSITORY_CACHE</span><span class="pi">:</span> <span class="s1">'</span><span class="s">enabled'</span>
+    <span class="na">RENOVATE_LOG_FILE</span><span class="pi">:</span> <span class="s">renovate-log.ndjson</span>
+    <span class="na">RENOVATE_LOG_FILE_LEVEL</span><span class="pi">:</span> <span class="s">debug</span>
+
+    <span class="c1"># custom config</span>
+    <span class="na">RENOVATE_TOKEN</span><span class="pi">:</span> <span class="s">$PAT_RENOVATE</span>
+    <span class="na">RENOVATE_GIT_AUTHOR</span><span class="pi">:</span> <span class="s1">'</span><span class="s">Renovate</span><span class="nv"> </span><span class="s">Bot</span><span class="nv"> </span><span class="s">&lt;no-reply@mydomain.de&gt;'</span>
+    <span class="na">RENOVATE_OSV_VULNERABILITY_ALERTS</span><span class="pi">:</span> <span class="s1">'</span><span class="s">true'</span>
+    <span class="na">RENOVATE_FORK_PROCESSING</span><span class="pi">:</span> <span class="s1">'</span><span class="s">enabled'</span>
+    <span class="na">RENOVATE_ONBOARDING</span><span class="pi">:</span> <span class="s1">'</span><span class="s">false'</span>
+    <span class="na">RENOVATE_ONBOARDING_CONFIG</span><span class="pi">:</span> <span class="s1">'</span><span class="s">{"$$schema":</span><span class="nv"> </span><span class="s">"https://docs.renovatebot.com/renovate-schema.json",</span><span class="nv"> </span><span class="s">"extends":</span><span class="nv"> </span><span class="s">["local&gt;renovate-bot:renovate.json"]</span><span class="nv"> </span><span class="s">}'</span>
+    <span class="na">RENOVATE_GITHUB_TOKEN_WARN</span><span class="pi">:</span> <span class="s1">'</span><span class="s">false'</span>
+    <span class="na">RENOVATE_REQUIRE_CONFIG</span><span class="pi">:</span> <span class="s1">'</span><span class="s">ignored'</span>
+    <span class="na">RENOVATE_CONFIG_FILE</span><span class="pi">:</span> <span class="s1">'</span><span class="s">renovate.json'</span>
+    <span class="na">LOG_LEVEL</span><span class="pi">:</span> <span class="s">debug</span>
+  <span class="na">trigger</span><span class="pi">:</span>
+    <span class="na">forward</span><span class="pi">:</span>
+      <span class="na">yaml_variables</span><span class="pi">:</span> <span class="kc">true</span>
+      <span class="na">pipeline_variables</span><span class="pi">:</span> <span class="kc">true</span>
+    <span class="na">include</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="na">job</span><span class="pi">:</span> <span class="s">renovate:discover</span>
+        <span class="na">artifact</span><span class="pi">:</span> <span class="s">.gitlab-renovate-repos.yml</span>
+</code></pre></div></div> <h1 id="results">Results</h1> <p>55 GitLab repositories are now scanned for dependencies (and updated) by renovate in 8 Minutes.</p> <div class="row mt-3"> <div class="col-sm mt-3 mt-md-0"> <figure> <picture> <source class="responsive-img-srcset" srcset="/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-1-480.webp 480w,/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-1-800.webp 800w,/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-1-1400.webp 1400w," sizes="95vw" type="image/webp"/> <img src="/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-1.png" class="img-fluid rounded z-depth-1" width="100%" height="auto" data-zoomable="" loading="eager" onerror="this.onerror=null; $('.responsive-img-srcset').remove();"/> </picture> </figure> </div> </div> <div class="row mt-3"> <div class="col-sm mt-3 mt-md-0"> <figure> <picture> <source class="responsive-img-srcset" srcset="/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-2-480.webp 480w,/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-2-800.webp 800w,/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-2-1400.webp 1400w," sizes="95vw" type="image/webp"/> <img src="/assets/blog/2024-05-10-parallel-renovate/renovate-single-parallel-length-2.png" class="img-fluid rounded z-depth-1" width="100%" height="auto" data-zoomable="" loading="eager" onerror="this.onerror=null; $('.responsive-img-srcset').remove();"/> </picture> </figure> </div> </div>]]></content><author><name></name></author><category term="devops"/><category term="renovate,"/><category term="gitlabci"/><summary type="html"><![CDATA[Automated dependency updates at scale]]></summary></entry></feed>
